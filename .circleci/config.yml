@@ -3,18 +3,17 @@ version: 2.1
 executors:
   default_container:
     docker:
-      - image: circleci/ruby:2.6.1
+      - image: circleci/ruby:2.6.1-node
         environment:
           RAILS_ENV: test
-          MYSQL_HOST: 127.0.0.1
-          MYSQL_USERNAME: 'root'
-          MYSQL_PASSWORD: ''
-          MYSQL_PORT: 3306
+          BUNDLE_JOBS: 4
+          BUNDLE_RETRY: 3
+          BUNDLE_PATH: vendor/bundle
+          BUNDLER_VERSION: 2.0.1
+
       - image: circleci/mysql:5.7-ram
         environment:
-          MYSQL_DATABASE: circleci-example-for-rails_test
           MYSQL_ALLOW_EMPTY_PASSWORD: true
-          MYSQL_ROOT_HOST: '%'
     working_directory: ~/circle-example-for-rails
 
 jobs:
@@ -24,7 +23,7 @@ jobs:
     steps:
       - checkout
       - save_cache:
-          key: v4-circleci-example-for-rails-{{ .Environment.CIRCLE_SHA1 }}
+          key: v8-circleci-example-for-rails-{{ .Environment.CIRCLE_SHA1 }}
           paths:
             - ~/circle-example-for-rails
 
@@ -33,16 +32,35 @@ jobs:
       name: default_container
     steps:
       - restore_cache: # ソースコードの復元
-          key: v4-circleci-example-for-rails-{{ .Environment.CIRCLE_SHA1 }}
+          key: v8-circleci-example-for-rails-{{ .Environment.CIRCLE_SHA1 }}
       - restore_cache: # vendor/bundleを復元
-          key: v4-dependencies-{{ checksum "Gemfile.lock" }}
+          key: v8-dependencies-{{ checksum "Gemfile.lock" }}
+
+#      - run:
+#          name: Configure Bundler
+#          command: |
+#            echo 'export BUNDLER_VERSION=$(cat Gemfile.lock | tail -1 | tr -d " ")' >> $BASH_ENV
+#            source $BASH_ENV
+#            gem install bundler
+
+      - run:
+          name: setup bundler
+          command: |
+            sudo gem uninstall bundler
+            sudo rm /usr/local/bin/bundle
+            sudo rm /usr/local/bin/bundler
+            sudo gem install bundler -v 2.0.1
+            sudo gem update --system
+            sudo bundle update --bundler
+
+
       - run:
           name: Bundle Install Dependencies
           command: |
-            gem install bundler -v 2.0.1
             bundle install
+
       - save_cache:
-          key: v4-dependencies-{{ checksum "Gemfile.lock" }}
+          key: v8-dependencies-{{ checksum "Gemfile.lock" }}
           paths:
             - vendor/bundle
   rspec:
@@ -50,9 +68,9 @@ jobs:
       name: default_container
     steps:
       - restore_cache: # ソースコードの復元
-          key: v4-circleci-example-for-rails-{{ .Environment.CIRCLE_SHA1 }}
+          key: v8-circleci-example-for-rails-{{ .Environment.CIRCLE_SHA1 }}
       - restore_cache: # vendor/bundleを復元
-          key: v4-dependencies-{{ checksum "Gemfile.lock" }}
+          key: v8-dependencies-{{ checksum "Gemfile.lock" }}
 
       - run:
           name: Watting stand up database
@@ -75,7 +93,6 @@ jobs:
             mkdir -p ~/rspec
             bundle exec rails db:create db:migrate
             TEST_FILES="$(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)"
-            gem install bundler -v 2.0.1
             bundle exec rspec --require rails_helper \
                               --color \
                               --format progress \
@@ -84,9 +101,9 @@ jobs:
 
       # collect reports
       - store_test_results:
-          path: /tmp/test-results
+          path: ~/rspec
       - store_artifacts:
-          path: /tmp/test-results
+          path: ~/tmp/test-results
           destination: test-results
 
 workflows:
