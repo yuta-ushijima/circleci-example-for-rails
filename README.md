@@ -1,2 +1,3 @@
 # circleci-example-for-rails
-This repo is example for circleci
+- This repo is example for circleci!
+
